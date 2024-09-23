@@ -53,12 +53,9 @@ class ConfirmationModal extends Modal {
     }
 
     onOpen() {
-        const { contentEl, modalEl } = this;
+        const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl('h2', { text: 'Unused Block IDs' });
-
-        // Make the modal draggable
-        this.makeDraggable(modalEl);
 
         const list = contentEl.createEl('ul');
         this.unusedBlockIds.forEach(item => {
@@ -89,33 +86,6 @@ class ConfirmationModal extends Modal {
     onClose() {
         const { contentEl } = this;
         contentEl.empty();
-    }
-
-    makeDraggable(modalEl: HTMLElement) {
-        let isDragging = false;
-        let offsetX = 0;
-        let offsetY = 0;
-
-        modalEl.style.position = 'absolute';
-
-        modalEl.addEventListener('mousedown', (e) => {
-            isDragging = true;
-            offsetX = e.clientX - modalEl.getBoundingClientRect().left;
-            offsetY = e.clientY - modalEl.getBoundingClientRect().top;
-            modalEl.style.cursor = 'move';
-        });
-
-        document.addEventListener('mousemove', (e) => {
-            if (isDragging) {
-                modalEl.style.left = `${e.clientX - offsetX}px`;
-                modalEl.style.top = `${e.clientY - offsetY}px`;
-            }
-        });
-
-        document.addEventListener('mouseup', () => {
-            isDragging = false;
-            modalEl.style.cursor = 'default';
-        });
     }
 }
 
