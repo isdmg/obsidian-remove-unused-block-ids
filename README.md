@@ -1,5 +1,5 @@
 # Remove Unused Block IDs
-A simple plugin that removes unuseed block IDs.
+A simple plugin that removes unused block IDs.
 
 ## How to use?
 Open the command palette and run the command **Remove Unused Block IDs: Scan Vault**.
