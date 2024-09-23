@@ -1,7 +1,7 @@
 {
 	"id": "remove-unused-block-ids",
 	"name": "Remove Unused Block IDs",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"minAppVersion": "0.15.0",
 	"description": "Remove unused block ids in your vault.",
 	"author": "Daniel Geneta",
