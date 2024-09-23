@@ -27,8 +27,6 @@ class UnusedBlockIdRemoverSettingTab extends PluginSettingTab {
 
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: 'Unused Block ID Remover Settings' });
-
         new Setting(containerEl)
             .setName('Excluded File Extensions')
             .setDesc('Add file extensions (e.g., .excalidraw.md) separated by commas to exclude from scanning.')
@@ -136,6 +134,8 @@ export default class UnusedBlockIdRemover extends Plugin {
         });
     }
 
+	onunload() {}
+
     async loadSettings() {
         this.settings = Object.assign(
             {},
@@ -223,44 +223,42 @@ export default class UnusedBlockIdRemover extends Plugin {
     }
 
     async deleteUnusedBlockIds(unusedBlockIds: UnusedBlockId[]) {
-        const loadingNotice = new Notice('Deleting unused block IDs...', 0);
-        let totalRemoved = 0;
-        const fileChanges = new Map<string, string[]>();
-
-        try {
-            for (const item of unusedBlockIds) {
-                if (!fileChanges.has(item.file)) {
-                    const file = this.app.vault.getAbstractFileByPath(item.file);
-                    if (file instanceof TFile) {
-                        const content = await this.app.vault.read(file);
-                        fileChanges.set(item.file, content.split('\n'));
-                    }
-                }
-
-                const lines = fileChanges.get(item.file);
-                if (lines) {
-                    const index = lines.findIndex(line => line.includes(`^${item.id}`));
-                    if (index !== -1) {
-                        lines[index] = lines[index].replace(/\s*\^[\w-]+$/, '');
-                        totalRemoved++;
-                    }
-                }
-            }
-
-            for (const [filePath, lines] of fileChanges) {
-                const file = this.app.vault.getAbstractFileByPath(filePath);
-                if (file instanceof TFile) {
-                    await this.app.vault.modify(file, lines.join('\n'));
-                }
-            }
-
-            loadingNotice.hide();
-            new Notice(`Removed ${totalRemoved} unused block IDs.`);
-        } catch (error) {
-            loadingNotice.hide();
-            new Notice(`Error: ${error.message}`);
-        }
-    }
+		const loadingNotice = new Notice('Deleting unused block IDs...', 0);
+		let totalRemoved = 0;
+		const processedFiles = new Set<string>();
+	
+		try {
+			for (const item of unusedBlockIds) {
+				if (!processedFiles.has(item.file)) {
+					const file = this.app.vault.getAbstractFileByPath(item.file);
+					if (file instanceof TFile) {
+						await this.app.vault.process(file, (content) => {
+							const lines = content.split('\n');
+							let fileChanged = false;
+	
+							for (const blockId of unusedBlockIds.filter(b => b.file === item.file)) {
+								const index = lines.findIndex(line => line.includes(`^${blockId.id}`));
+								if (index !== -1) {
+									lines[index] = lines[index].replace(/\s*\^[\w-]+$/, '');
+									totalRemoved++;
+									fileChanged = true;
+								}
+							}
+	
+							processedFiles.add(item.file);
+							return fileChanged ? lines.join('\n') : content;
+						});
+					}
+				}
+			}
+	
+			loadingNotice.hide();
+			new Notice(`Removed ${totalRemoved} unused block IDs.`);
+		} catch (error) {
+			loadingNotice.hide();
+			new Notice(`Error: ${error.message}`);
+		}
+	}
 
     async openFileAtBlockId(filePath: string, blockId: string) {
         const file = this.app.vault.getAbstractFileByPath(filePath);
