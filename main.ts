@@ -28,7 +28,7 @@ class UnusedBlockIdRemoverSettingTab extends PluginSettingTab {
         containerEl.empty();
 
         new Setting(containerEl)
-            .setName('Excluded File Extensions')
+            .setName('Excluded file extensions')
             .setDesc('Add file extensions (e.g., .excalidraw.md) separated by commas to exclude from scanning.')
             .addTextArea((text) => {
                 text
@@ -73,7 +73,7 @@ class ConfirmationModal extends Modal {
 
         new Setting(contentEl)
             .addButton(btn => btn
-                .setButtonText('Delete All')
+                .setButtonText('Delete all')
                 .onClick(() => {
                     this.plugin.deleteUnusedBlockIds(this.unusedBlockIds);
                     this.close();
@@ -99,7 +99,7 @@ export default class UnusedBlockIdRemover extends Plugin {
 
         this.addCommand({
             id: 'scan-vault',
-            name: 'Scan Vault',
+            name: 'Scan vault',
             callback: () => this.findUnusedBlockIds(),
         });
     }
