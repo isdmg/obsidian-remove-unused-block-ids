@@ -166,6 +166,9 @@ export default class UnusedBlockIdRemover extends Plugin {
         blockIdReferences: Set<string>
     ) {
         const lines = content.split('\n');
+
+        /* MAYBE: Update regex to /(?:\s|^)\^([\w-]+)$/ to consider space before caret because text^blockId is not considered as an ID.
+        But maybe it is fine because even Obsidian treats text^blockId as blockID in terms of styling. */
         const blockIdRegex = /\^([\w-]+)$/;  // Matches block IDs like ^blockID
         const blockIdRefRegex = /\[\[(.*?)#\^([\w-]+)\s*(\|.*?)?\]\]/g;  // Updated to handle spaces around |
 
@@ -207,9 +210,10 @@ export default class UnusedBlockIdRemover extends Plugin {
 							let fileChanged = false;
 	
 							for (const blockId of unusedBlockIds.filter(b => b.file === item.file)) {
-								const index = lines.findIndex(line => line.includes(`^${blockId.id}`));
+								const blockIdRegex = new RegExp(`\\s*\\^${blockId.id}$`);  // Target only block ID at the end of the line
+                                const index = lines.findIndex(line => blockIdRegex.test(line));
 								if (index !== -1) {
-									lines[index] = lines[index].replace(/\s*\^[\w-]+$/, '');
+									lines[index] = lines[index].replace(blockIdRegex, '');  // Remove only the block ID
 									totalRemoved++;
 									fileChanged = true;
 								}
@@ -243,7 +247,7 @@ export default class UnusedBlockIdRemover extends Plugin {
     async getLineNumberForBlockId(file: TFile, blockId: string): Promise<number> {
         const content = await this.app.vault.cachedRead(file);
         const lines = content.split('\n');
-        const index = lines.findIndex(line => line.includes(`^${blockId}`));
+        const index = lines.findIndex(line => line.trim().endsWith(`^${blockId}`)); // Get matches for end of line only
         return index !== -1 ? index : 0;
     }
 }
