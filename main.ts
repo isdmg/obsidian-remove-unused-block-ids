@@ -166,10 +166,7 @@ export default class UnusedBlockIdRemover extends Plugin {
         blockIdReferences: Set<string>
     ) {
         const lines = content.split('\n');
-
-        /* MAYBE: Update regex to /(?:\s|^)\^([\w-]+)$/ to consider space before caret because text^blockId is not considered as an ID.
-        But maybe it is fine because even Obsidian treats text^blockId as blockID in terms of styling. */
-        const blockIdRegex = /\^([\w-]+)$/;  // Matches block IDs like ^blockID
+        const blockIdRegex = /(?:\s|^)\^([\w-]+)$/;  // Matches block IDs like ^blockID
         const blockIdRefRegex = /\[\[(.*?)#\^([\w-]+)\s*(\|.*?)?\]\]/g;  // Updated to handle spaces around |
 
         lines.forEach((line, index) => {
