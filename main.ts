@@ -4,6 +4,7 @@ interface UnusedBlockId {
     id: string;
     file: string;
     line: string;
+    lineNumber: number;
 }
 
 interface UnusedBlockIdRemoverSettings {
@@ -55,7 +56,7 @@ class ConfirmationModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Unused Block IDs' });
+        contentEl.createEl('h2', { text: `Unused Block IDs: (${this.unusedBlockIds.length})` });
 
         const list = contentEl.createEl('ul');
         this.unusedBlockIds.forEach(item => {
@@ -66,7 +67,7 @@ class ConfirmationModal extends Modal {
             });
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                this.plugin.openFileAtBlockId(item.file, item.id);
+                this.plugin.openFileAtBlockId(item.file, item.id, item.lineNumber);
             });
             li.createEl('span', { text: ` in file: ${item.file}` });
         });
@@ -104,7 +105,7 @@ export default class UnusedBlockIdRemover extends Plugin {
         });
     }
 
-	onunload() {}
+    onunload() { }
 
     async loadSettings() {
         this.settings = Object.assign(
@@ -122,31 +123,34 @@ export default class UnusedBlockIdRemover extends Plugin {
         const loadingNotice = new Notice('Searching for unused block IDs...', 0);
 
         try {
-            // If the excludedExtensions setting is empty, include all files
-            const excludedExtensions = this.settings.excludedExtensions.filter(ext => ext); // Filter out empty strings
+            const excludedExtensions = this.settings.excludedExtensions.filter(ext => ext);
             const files = this.app.vault.getMarkdownFiles().filter(file => {
-                // If there are no excluded extensions, return true (include all files)
-                if (excludedExtensions.length === 0) {
-                    return true;
-                }
-                // Otherwise, exclude files that end with any of the extensions
-                return !excludedExtensions.some(ext => file.path.endsWith(ext));
+                return excludedExtensions.length === 0 || !excludedExtensions.some(ext => file.path.endsWith(ext));
             });
 
-            const blockIds = new Map<string, UnusedBlockId>();
+            // Map to store block IDs, now keyed by both file path and block ID
+            const blockIds = new Map<string, UnusedBlockId[]>();
+            // Set to store block ID references, now using file path + block ID as key
             const blockIdReferences = new Set<string>();
 
+            // Collect block IDs and references
             for (const file of files) {
                 const content = await this.app.vault.cachedRead(file);
                 this.collectBlockIdsAndReferences(content, file.path, blockIds, blockIdReferences);
             }
 
-            const unusedBlockIds = Array.from(blockIds.values())
-                .filter(item => !blockIdReferences.has(item.id));
+            // Identify unused block IDs by comparing blockIds and blockIdReferences
+            const unusedBlockIds = Array.from(blockIds.entries())
+                .flatMap(([key, blockIdArray]) => {
+                    return blockIdArray.filter(item => {
+                        const referenceKey = `${item.file}#${item.id}`;
+                        return !blockIdReferences.has(referenceKey);
+                    });
+                });
 
             loadingNotice.hide();
 
-            // If no unused block IDs are found, show a notice
+            // If no unused block IDs found, show notice
             if (unusedBlockIds.length === 0) {
                 new Notice('No unused block IDs found.');
             } else {
@@ -162,7 +166,7 @@ export default class UnusedBlockIdRemover extends Plugin {
     collectBlockIdsAndReferences(
         content: string,
         filePath: string,
-        blockIds: Map<string, UnusedBlockId>,
+        blockIds: Map<string, UnusedBlockId[]>,
         blockIdReferences: Set<string>
     ) {
         const lines = content.split('\n');
@@ -173,17 +177,31 @@ export default class UnusedBlockIdRemover extends Plugin {
             // Match block IDs at the end of the line, e.g., ^blockID
             const match = line.match(blockIdRegex);
             if (match && this.isValidBlockId(match[1])) {
-                blockIds.set(match[1], {
-                    id: match[1],
+                const blockId = match[1];
+                const blockIdKey = `${filePath}#${blockId}`;  // Create a unique key for block ID + file
+
+                // Check if the blockId already exists in the map, and if so, append to the array
+                if (!blockIds.has(blockIdKey)) {
+                    blockIds.set(blockIdKey, []);  // Initialize an empty array for the blockId if not already present
+                }
+
+                // Push the new occurrence of this block ID to the array
+                blockIds.get(blockIdKey)?.push({
+                    id: blockId,
                     file: filePath,
-                    line: line.trim()
+                    line: line.trim(),
+                    lineNumber: index
                 });
             }
 
             // Match block references, e.g., [[filename#^blockID | optional text]]
             let refMatch;
             while ((refMatch = blockIdRefRegex.exec(line)) !== null) {
-                blockIdReferences.add(refMatch[2]);  // refMatch[2] captures the block ID
+                const refFilePath = this.app.metadataCache.getFirstLinkpathDest(refMatch[1], filePath)?.path;  // Resolve the full path for the referenced file
+                if (refFilePath) {
+                    const blockRefKey = `${refFilePath}#${refMatch[2]}`;  // Create a unique key for the reference
+                    blockIdReferences.add(blockRefKey);  // Add reference with full file path and block ID
+                }
             }
         });
     }
@@ -193,58 +211,61 @@ export default class UnusedBlockIdRemover extends Plugin {
     }
 
     async deleteUnusedBlockIds(unusedBlockIds: UnusedBlockId[]) {
-		const loadingNotice = new Notice('Deleting unused block IDs...', 0);
-		let totalRemoved = 0;
-		const processedFiles = new Set<string>();
-	
-		try {
-			for (const item of unusedBlockIds) {
-				if (!processedFiles.has(item.file)) {
-					const file = this.app.vault.getAbstractFileByPath(item.file);
-					if (file instanceof TFile) {
-						await this.app.vault.process(file, (content) => {
-							const lines = content.split('\n');
-							let fileChanged = false;
-	
-							for (const blockId of unusedBlockIds.filter(b => b.file === item.file)) {
-								const blockIdRegex = new RegExp(`\\s*\\^${blockId.id}$`);  // Target only block ID at the end of the line
-                                const index = lines.findIndex(line => blockIdRegex.test(line));
-								if (index !== -1) {
-									lines[index] = lines[index].replace(blockIdRegex, '');  // Remove only the block ID
-									totalRemoved++;
-									fileChanged = true;
-								}
-							}
-	
-							processedFiles.add(item.file);
-							return fileChanged ? lines.join('\n') : content;
-						});
-					}
-				}
-			}
-	
-			loadingNotice.hide();
-			new Notice(`Removed ${totalRemoved} unused block IDs.`);
-		} catch (error) {
-			loadingNotice.hide();
-			new Notice(`Error: ${error.message}`);
-		}
-	}
+        const loadingNotice = new Notice('Deleting unused block IDs...', 0);
+        let totalRemoved = 0;
 
-    async openFileAtBlockId(filePath: string, blockId: string) {
+        // Group block IDs by file for efficient processing
+        const blockIdsByFile = unusedBlockIds.reduce((acc, item) => {
+            if (!acc[item.file]) {
+                acc[item.file] = [];
+            }
+            acc[item.file].push(item);
+            return acc;
+        }, {} as Record<string, UnusedBlockId[]>);
+
+        try {
+            // Process each file one at a time
+            for (const [filePath, blockIds] of Object.entries(blockIdsByFile)) {
+                const file = this.app.vault.getAbstractFileByPath(filePath);
+                if (file instanceof TFile) {
+                    // Use async processing with a single read and write per file
+                    await this.app.vault.process(file, (content) => {
+                        const lines = content.split('\n');
+                        let fileChanged = false;
+
+                        // Iterate over block IDs for this file
+                        blockIds.forEach(blockId => {
+                            const lineIndex = blockId.lineNumber;
+                            if (lineIndex >= 0 && lineIndex < lines.length) {
+                                const blockIdRegex = new RegExp(`\\s*\\^${blockId.id}$`);  // Target only block ID at end of line
+                                if (blockIdRegex.test(lines[lineIndex])) {
+                                    lines[lineIndex] = lines[lineIndex].replace(blockIdRegex, '');  // Remove the block ID
+                                    totalRemoved++;
+                                    fileChanged = true;
+                                }
+                            }
+                        });
+
+                        return fileChanged ? lines.join('\n') : content;  // Only save if the file was changed
+                    });
+                }
+            }
+
+            loadingNotice.hide();
+            new Notice(`Removed ${totalRemoved} unused block IDs.`);
+        } catch (error) {
+            loadingNotice.hide();
+            new Notice(`Error: ${error.message}`);
+        }
+    }
+
+    async openFileAtBlockId(filePath: string, blockId: string, lineNumber: number) {
         const file = this.app.vault.getAbstractFileByPath(filePath);
         if (file instanceof TFile) {
             const leaf = this.app.workspace.getLeaf();
             await leaf.openFile(file, {
-                eState: { line: await this.getLineNumberForBlockId(file, blockId) }
+                eState: { line: lineNumber }
             });
         }
-    }
-
-    async getLineNumberForBlockId(file: TFile, blockId: string): Promise<number> {
-        const content = await this.app.vault.cachedRead(file);
-        const lines = content.split('\n');
-        const index = lines.findIndex(line => line.trim().endsWith(`^${blockId}`)); // Get matches for end of line only
-        return index !== -1 ? index : 0;
     }
 }
