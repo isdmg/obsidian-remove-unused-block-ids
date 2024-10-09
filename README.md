@@ -2,7 +2,7 @@
 A simple plugin that removes unused block IDs.
 
 ## Caution
-Back up your files before using this plugin to prevent any data loss which may occur when the plugin works unexpectedly.
+Consider backing up your vault before using this plugin to avoid any risk of data loss.
 
 ## Limitations
 - When a block ID is only referenced in a canvas card (and nowhere else), it will be considered unused and added to the unused block IDs list. This happens because a canvas card is not treated like a markdown file.
@@ -10,4 +10,5 @@ Back up your files before using this plugin to prevent any data loss which may o
 ![Duplicate block ids](https://i.imgur.com/YVLT6zO.png)
 
 ## How to use?
-Open the command palette and run the command **Remove Unused Block IDs: Scan vault**.
+1. Open the command palette and run the command **Remove Unused Block IDs: Scan vault**.
+2. Confirm the deletion of unused block IDs.
